@@ -93,11 +93,12 @@ test('Runtime directory rejects symbolic links', { skip: process.platform === 'w
 });
 
 test('Windows runtime directory grants access only to the current user', { skip: process.platform !== 'win32' }, async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), 'ask-acl-'));
+  const directory = await mkdtemp(join(tmpdir(), "ask acl 空格 'quote' "));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await privateDirectory(directory);
   const { stdout } = await execFileAsync(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command',
-    '$acl = Get-Acl -LiteralPath $env.ASKME_TEST_DIRECTORY; ' +
+    "$ErrorActionPreference = 'Stop'; Set-StrictMode -Version Latest; " +
+    '$acl = Get-Acl -LiteralPath $env:ASKME_TEST_DIRECTORY; ' +
     '$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; ' +
     '$rules = @($acl.Access); ' +
     'if (-not $acl.AreAccessRulesProtected -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid) { exit 1 }; "private"'], {

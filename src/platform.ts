@@ -77,12 +77,12 @@ export async function privateDirectory(directory = runtimeDir): Promise<void> {
   if (process.platform !== 'win32') return privateMode(directory, 0o700);
   // Windows needs a DACL rather than POSIX mode bits. Pass the path as data.
   await execFileAsync(windowsPowerShell(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
-    "$ErrorActionPreference = 'Stop'; " +
+    "$ErrorActionPreference = 'Stop'; Set-StrictMode -Version Latest; " +
     '$acl = [System.Security.AccessControl.DirectorySecurity]::new(); ' +
     '$acl.SetAccessRuleProtection($true, $false); ' +
     '$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User; ' +
     '$rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, "FullControl", "ContainerInherit, ObjectInherit", "None", "Allow"); ' +
-    '$acl.AddAccessRule($rule); Set-Acl -LiteralPath $env.ASKME_PRIVATE_DIRECTORY -AclObject $acl;'], {
+    '$acl.AddAccessRule($rule); Set-Acl -LiteralPath $env:ASKME_PRIVATE_DIRECTORY -AclObject $acl;'], {
     env: shellEnvironment({ ...process.env, ASKME_PRIVATE_DIRECTORY: directory }), windowsHide: true,
   });
 }
