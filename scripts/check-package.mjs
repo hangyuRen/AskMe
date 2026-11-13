@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,11 +21,16 @@ try {
   const windows = process.platform === 'win32';
   const executable = windows ? join(prefix, 'ask.cmd') : join(prefix, 'bin', 'ask');
   assert.ok(existsSync(executable), 'npm must generate the ask command');
-  const installed = join(prefix, ...(windows ? [] : ['lib']), 'node_modules', 'askme', 'dist', 'cli.js');
+  const globalRoot = npm('root', '--global', '--prefix', prefix).trim();
+  const packageDirectory = join(globalRoot, ...packed.name.split('/'));
+  const metadata = JSON.parse(readFileSync(join(packageDirectory, 'package.json'), 'utf8'));
+  assert.equal(metadata.name, packed.name, 'The installed package must match the packed package');
+  assert.ok(metadata.bin?.ask, 'The package must expose the ask command');
+  const installed = join(packageDirectory, metadata.bin.ask);
   const help = execFileSync(process.execPath, [installed, '--help'], { encoding: 'utf8' });
   assert.match(help, /Usage: ask/);
   assert.match(help, /ask config/);
-  console.log(`Package installation verified on ${process.platform}: ${packed.filename}, ask command, and CLI help.`);
+  console.log(`Package installation verified on ${process.platform}: ${packed.name}, ${packed.filename}, ask command, and CLI help.`);
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

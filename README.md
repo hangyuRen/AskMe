@@ -6,11 +6,11 @@ AskMe is a command-line assistant built with TypeScript. It uses your working di
 
 **macOS · Windows · Linux · Node.js ≥ 24 · MIT License**
 
-Project name: **AskMe**. npm package: `askme`. Terminal command: `ask`.
+Project name: **AskMe**. npm package: [@bbzz/askme](https://www.npmjs.com/package/@bbzz/askme). Terminal command: `ask`.
 
-[Quick start](#quick-start) · [Usage](#usage) · [Configuration](#configuration) · [History and data](#history-and-data) · [Troubleshooting](#troubleshooting) · [Development and contributing](#development-and-contributing)
+[Quick start](#quick-start) · [Usage](#usage) · [Updating](#updating) · [Configuration](#configuration) · [History and data](#history-and-data) · [Troubleshooting](#troubleshooting) · [Development and contributing](#development-and-contributing)
 
-![AskMe terminal demo showing a disk usage request, command confirmation, execution output, and AI summary](docs/images/askme-demo.png)
+![AskMe terminal demo showing a disk usage request, command confirmation, execution output, and AI summary](https://raw.githubusercontent.com/hangyuRen/AskMe/main/docs/images/askme-demo.png)
 
 *AskMe checking disk usage: review the command, confirm execution, and read the summary.*
 
@@ -32,19 +32,10 @@ Built-in CLI messages are in English. Model-generated explanations and summaries
 - macOS, Windows, or Linux. Windows uses the built-in Windows PowerShell 5.1; macOS and Linux use your configured Unix Shell.
 - An API URL, key, and model name for an OpenAI Chat Completions-compatible service.
 
-### 1. Install from source
-
-Clone the repository and install from its root directory:
+### 1. Install from npm
 
 ```sh
-git clone https://github.com/hangyuRen/AskMe.git
-cd AskMe
-```
-
-```sh
-npm ci
-npm run build
-npm install -g .
+npm install -g @bbzz/askme
 ```
 
 Verify the installation:
@@ -53,7 +44,7 @@ Verify the installation:
 ask --help
 ```
 
-These instructions cover installation from source. Uploading this repository to GitHub does not publish an npm package or a Homebrew formula. The [Homebrew formula template](packaging/askme.rb.template) still requires a published release URL and checksum before it can be used for distribution.
+The package installs the `ask` command on macOS, Windows, and Linux. No repository clone or TypeScript build is needed. In Windows PowerShell, use `ask.cmd` if execution policy blocks the `ask.ps1` shim.
 
 ### 2. Configure your model service
 
@@ -92,6 +83,17 @@ ask "Find the largest files in the current directory"
 ```
 
 The daemon starts automatically. Each command is displayed in full and runs only after you enter `y`.
+
+## Updating
+
+Install the latest npm release, then stop the running daemon so the next task starts the updated code:
+
+```sh
+npm install -g @bbzz/askme@latest
+ask daemon stop
+```
+
+Saved settings and history in your user profile are retained.
 
 ## Usage
 
@@ -175,7 +177,7 @@ In interactive terminals, commands appear in blue, AI explanations and summaries
 | Linux | `$SHELL`, then bash or sh | Unix domain socket | zsh/bash history |
 | Windows | Windows PowerShell 5.1, without profiles | Per-user named pipe | PowerShell PSReadLine history |
 
-Platform adapters are implemented for all three systems. macOS has been tested locally; native Windows and Linux validation is provided by the [CI matrix](.github/workflows/ci.yml). Check the latest results before treating a platform as verified.
+The [CI matrix](https://github.com/hangyuRen/AskMe/actions/workflows/ci.yml) tests macOS, Windows, and Linux with Node.js 24 and 26, including package installation checks. See the workflow results for the latest platform status.
 
 You can launch the Windows CLI from PowerShell or Command Prompt. Generated commands always run in Windows PowerShell, so requests include the OS and execution Shell to help the model use the correct syntax. Windows PowerShell 5.1 uses semicolons rather than `&&` to separate commands.
 
@@ -269,6 +271,20 @@ Check `ASKME_API_URL`, `ASKME_API_KEY`, and `ASKME_API_MODEL`, along with connec
 No. The Windows implementation uses native named pipes and Windows PowerShell. WSL remains a separate Linux environment with its own Node.js installation, configuration, and history. If PowerShell blocks a generated npm script shim, you can invoke `ask.cmd` explicitly.
 
 ## Development and contributing
+
+### Install from source
+
+For development or testing unpublished changes:
+
+```sh
+git clone https://github.com/hangyuRen/AskMe.git
+cd AskMe
+npm ci
+npm run build
+npm install -g .
+```
+
+The [Homebrew formula template](packaging/askme.rb.template) still requires a release URL and checksum before it can be distributed through a tap.
 
 ### Common commands
 
