@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { promisify } from 'node:util';
 import { execute } from '../dist/client.js';
-import { commandArgs, commandShell, historyPath, ipcPath, privateDirectory, shellEnvironment, windowsPowerShell } from '../dist/platform.js';
-
-const execFileAsync = promisify(execFile);
+import { commandArgs, commandShell, historyPath, ipcPath, privateDirectory, shellEnvironment } from '../dist/platform.js';
+import { assertPrivatePermissions } from './helpers/permissions.mjs';
 
 test('Windows PowerShell does not inherit incompatible module paths from its parent', () => {
   const original = { PSModulePath: 'PowerShell 7 modules', psmodulepath: 'another conflicting path', PATH: 'tools', ASKME_PRIVATE_DIRECTORY: 'config directory' };
@@ -96,15 +93,7 @@ test('Windows runtime directory grants access only to the current user', { skip:
   const directory = await mkdtemp(join(tmpdir(), "ask acl 空格 'quote' "));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await privateDirectory(directory);
-  const { stdout } = await execFileAsync(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command',
-    "$ErrorActionPreference = 'Stop'; Set-StrictMode -Version Latest; " +
-    '$acl = Get-Acl -LiteralPath $env:ASKME_TEST_DIRECTORY; ' +
-    '$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; ' +
-    '$rules = @($acl.Access); ' +
-    'if (-not $acl.AreAccessRulesProtected -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid) { exit 1 }; "private"'], {
-    env: shellEnvironment({ ...process.env, ASKME_TEST_DIRECTORY: directory }), windowsHide: true,
-  });
-  assert.equal(stdout.trim(), 'private');
+  await assertPrivatePermissions(directory, 0o700);
 });
 
 test('Windows configuration and commands work with incompatible inherited PowerShell modules', { skip: process.platform !== 'win32' }, async (t) => {

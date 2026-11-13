@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat, writeFile, chmod } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { loadConfig, resolveConfig, saveConfig } from '../dist/config.js';
+import { assertPrivatePermissions } from './helpers/permissions.mjs';
 
 const config = { ASKME_API_URL: 'https://example.invalid/v1', ASKME_API_KEY: 'test-key', ASKME_API_MODEL: 'test-model' };
 async function temporary(t) {
@@ -17,12 +18,12 @@ test('Saved configuration survives reload with private file permissions', async 
   await saveConfig(config, dir);
   const path = join(dir, 'config.json');
   assert.deepEqual(await loadConfig(path), config);
-  if (process.platform !== 'win32') assert.equal((await stat(path)).mode & 0o777, 0o600);
-  if (process.platform !== 'win32') assert.equal((await stat(dir)).mode & 0o777, 0o700);
+  await assertPrivatePermissions(path, 0o600);
+  await assertPrivatePermissions(dir, 0o700);
   if (process.platform !== 'win32') await chmod(path, 0o644);
   await saveConfig({ ...config, ASKME_API_MODEL: 'new-model' }, dir);
   assert.equal((await loadConfig(path)).ASKME_API_MODEL, 'new-model');
-  assert.equal((await stat(path)).mode & 0o777, 0o600);
+  await assertPrivatePermissions(path, 0o600);
 });
 
 test('Environment overrides saved fields without changing the saved configuration', () => {
