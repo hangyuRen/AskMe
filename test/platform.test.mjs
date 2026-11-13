@@ -1,0 +1,99 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdtemp, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { promisify } from 'node:util';
+import { execute } from '../dist/client.js';
+import { commandArgs, commandShell, historyPath, ipcPath, privateDirectory, windowsPowerShell } from '../dist/platform.js';
+
+const execFileAsync = promisify(execFile);
+
+test('IPC selects Unix sockets or isolated, stable Windows named pipes', () => {
+  assert.equal(ipcPath('/tmp/ask', 'linux'), join('/tmp/ask', 'daemon.sock'));
+  assert.equal(ipcPath('/tmp/ask', 'darwin'), join('/tmp/ask', 'daemon.sock'));
+  const pipe = ipcPath('C:\\Users\\Alice\\.ask', 'win32');
+  assert.ok(pipe.startsWith('\\\\.\\pipe\\askme-'));
+  assert.equal(pipe, ipcPath('c:\\users\\alice\\.ask', 'win32'));
+  assert.notEqual(pipe, ipcPath('C:\\Users\\Bob\\.ask', 'win32'));
+});
+
+test('Shell selection respects Unix preferences and supplies platform defaults', () => {
+  assert.equal(commandShell('darwin', {}, () => true), '/bin/zsh');
+  assert.equal(commandShell('linux', {}, () => true), '/bin/bash');
+  assert.equal(commandShell('linux', { SHELL: '/custom/sh' }, () => true), '/custom/sh');
+  assert.equal(commandShell('linux', { SHELL: '/missing/sh' }, () => false), '/bin/sh');
+  assert.equal(commandShell('win32', { SystemRoot: 'C:\\Windows', SHELL: '/bin/bash' }), 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+});
+
+test('Command arguments preserve source text and use noninteractive PowerShell on Windows', () => {
+  assert.deepEqual(commandArgs('echo hello', 'linux'), ['-c', 'echo hello']);
+  const args = commandArgs('Get-Location', 'win32');
+  assert.ok(args.includes('-NoProfile'));
+  assert.ok(args.includes('-NonInteractive'));
+  assert.match(args.at(-1), /UTF8Encoding/);
+  assert.match(args.at(-1), /Get-Location\n/);
+  assert.match(args.at(-1), /exit \$LASTEXITCODE/);
+});
+
+test('History paths cover zsh, bash, PowerShell, and explicit overrides', () => {
+  assert.equal(historyPath('linux', { SHELL: '/bin/bash' }, '/home/test'), join('/home/test', '.bash_history'));
+  assert.equal(historyPath('darwin', { SHELL: '/bin/zsh' }, '/home/test'), join('/home/test', '.zsh_history'));
+  assert.equal(historyPath('win32', { APPDATA: 'C:\\Data' }, 'C:\\Users\\test'), 'C:\\Data\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt');
+  assert.equal(historyPath('win32', { HISTFILE: 'custom.txt' }), 'custom.txt');
+});
+
+test('Actual command execution preserves UTF-8 and native exit codes', async () => {
+  const result = await execute({ shell: "node -e 'process.stdout.write(String.fromCodePoint(0x4F60,0x597D)); process.exit(7)'", reason: '' }, process.cwd());
+  assert.equal(result.exitCode, 7);
+  assert.equal(result.output, '你好');
+});
+
+test('Commands run in directories containing spaces', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'ask cwd with spaces '));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const result = await execute({ shell: "node -p 'process.cwd()'", reason: '' }, directory);
+  assert.equal(result.exitCode, 0);
+  // macOS may resolve /var to /private/var.
+  const { realpath } = await import('node:fs/promises');
+  assert.equal(await realpath(result.output.trim()), await realpath(directory));
+});
+
+test('Already cancelled commands never execute', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  assert.deepEqual(await execute({ shell: 'echo should-not-run', reason: '' }, process.cwd(), controller.signal), { exitCode: null, output: '' });
+});
+
+test('Cancellation stops an active command and its child process', { timeout: 10_000 }, async () => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 500);
+  try {
+    const result = await execute({ shell: "node -e 'setTimeout(()=>{},30000)'", reason: '' }, process.cwd(), controller.signal);
+    assert.notEqual(result.exitCode, 0);
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+test('Runtime directory rejects symbolic links', { skip: process.platform === 'win32' }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'ask-link-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await symlink(directory, join(directory, 'link'));
+  await assert.rejects(privateDirectory(join(directory, 'link')), /must be a directory owned/);
+});
+
+test('Windows runtime directory grants access only to the current user', { skip: process.platform !== 'win32' }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'ask-acl-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await privateDirectory(directory);
+  const { stdout } = await execFileAsync(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command',
+    '$acl = Get-Acl -LiteralPath $env.ASKME_TEST_DIRECTORY; ' +
+    '$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; ' +
+    '$rules = @($acl.Access); ' +
+    'if (-not $acl.AreAccessRulesProtected -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid) { exit 1 }; "private"'], {
+    env: { ...process.env, ASKME_TEST_DIRECTORY: directory }, windowsHide: true,
+  });
+  assert.equal(stdout.trim(), 'private');
+});

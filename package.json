@@ -1,0 +1,48 @@
+{
+  "name": "askme",
+  "version": "0.2.2",
+  "description": "AskMe: a shared local AI command planner for your shell",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "ask": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "shell",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepack": "npm run build",
+    "test:package": "npm run build && node scripts/check-package.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hangyuRen/AskMe.git"
+  },
+  "homepage": "https://github.com/hangyuRen/AskMe#readme",
+  "bugs": {
+    "url": "https://github.com/hangyuRen/AskMe/issues"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "shell",
+    "terminal",
+    "agent"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ]
+}
