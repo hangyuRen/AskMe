@@ -19,6 +19,21 @@ export function windowsPowerShell(env: NodeJS.ProcessEnv = process.env): string 
   return win32.join(env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 }
 
+export function shellEnvironment(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  const result = { ...env };
+  if (platform === 'win32') {
+    // Node can inherit PowerShell 7 module paths, which break module loading in
+    // Windows PowerShell 5.1. Let the child rebuild its own compatible paths.
+    for (const name of Object.keys(result)) {
+      if (name.toLowerCase() === 'psmodulepath') delete result[name];
+    }
+  }
+  return result;
+}
+
 export function commandShell(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
@@ -68,6 +83,6 @@ export async function privateDirectory(directory = runtimeDir): Promise<void> {
     '$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User; ' +
     '$rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, "FullControl", "ContainerInherit, ObjectInherit", "None", "Allow"); ' +
     '$acl.AddAccessRule($rule); Set-Acl -LiteralPath $env.ASKME_PRIVATE_DIRECTORY -AclObject $acl;'], {
-    env: { ...process.env, ASKME_PRIVATE_DIRECTORY: directory }, windowsHide: true,
+    env: shellEnvironment({ ...process.env, ASKME_PRIVATE_DIRECTORY: directory }), windowsHide: true,
   });
 }

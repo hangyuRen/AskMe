@@ -1,14 +1,22 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { execute } from '../dist/client.js';
-import { commandArgs, commandShell, historyPath, ipcPath, privateDirectory, windowsPowerShell } from '../dist/platform.js';
+import { commandArgs, commandShell, historyPath, ipcPath, privateDirectory, shellEnvironment, windowsPowerShell } from '../dist/platform.js';
 
 const execFileAsync = promisify(execFile);
+
+test('Windows PowerShell does not inherit incompatible module paths from its parent', () => {
+  const original = { PSModulePath: 'PowerShell 7 modules', psmodulepath: 'another conflicting path', PATH: 'tools', ASKME_PRIVATE_DIRECTORY: 'config directory' };
+  assert.deepEqual(shellEnvironment(original, 'win32'), { PATH: 'tools', ASKME_PRIVATE_DIRECTORY: 'config directory' });
+  assert.equal(original.PSModulePath, 'PowerShell 7 modules');
+  assert.deepEqual(shellEnvironment(original, 'darwin'), original);
+  assert.deepEqual(shellEnvironment(original, 'linux'), original);
+});
 
 test('IPC selects Unix sockets or isolated, stable Windows named pipes', () => {
   assert.equal(ipcPath('/tmp/ask', 'linux'), join('/tmp/ask', 'daemon.sock'));
@@ -93,7 +101,34 @@ test('Windows runtime directory grants access only to the current user', { skip:
     '$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; ' +
     '$rules = @($acl.Access); ' +
     'if (-not $acl.AreAccessRulesProtected -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -ne $sid) { exit 1 }; "private"'], {
-    env: { ...process.env, ASKME_TEST_DIRECTORY: directory }, windowsHide: true,
+    env: shellEnvironment({ ...process.env, ASKME_TEST_DIRECTORY: directory }), windowsHide: true,
   });
   assert.equal(stdout.trim(), 'private');
+});
+
+test('Windows configuration and commands work with incompatible inherited PowerShell modules', { skip: process.platform !== 'win32' }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'ask-module-regression-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const modules = join(directory, 'modules');
+  for (const [name, functions] of [
+    ['Microsoft.PowerShell.Security', "'Set-Acl','Get-Acl'"],
+    ['Microsoft.PowerShell.Utility', "'Get-Date'"],
+  ]) {
+    const path = join(modules, name);
+    await mkdir(path, { recursive: true });
+    await writeFile(join(path, `${name}.psd1`), `@{ RootModule='${name}.psm1'; ModuleVersion='1.0.0'; FunctionsToExport=@(${functions}) }`);
+    await writeFile(join(path, `${name}.psm1`), "throw 'Incompatible parent PowerShell module must not be loaded'");
+  }
+  const previous = process.env.PSModulePath;
+  process.env.PSModulePath = modules;
+  try {
+    // Both paths launch Windows PowerShell independently and must sanitize it.
+    await privateDirectory(join(directory, 'runtime'));
+    const result = await execute({ shell: "Get-Date -Format 'yyyy'", reason: '' }, directory);
+    assert.equal(result.exitCode, 0, result.output);
+    assert.match(result.output.trim(), /^\d{4}$/);
+  } finally {
+    if (previous === undefined) delete process.env.PSModulePath;
+    else process.env.PSModulePath = previous;
+  }
 });

@@ -11,7 +11,7 @@ import { displayCommand } from './policy.js';
 import { connectExisting } from './server.js';
 import { serviceIntent } from './self.js';
 import { configure, loadConfig, resolveConfig } from './config.js';
-import { commandArgs, commandShell } from './platform.js';
+import { commandArgs, commandShell, shellEnvironment } from './platform.js';
 import { MAX_OUTPUT, PROTOCOL_VERSION } from './types.js';
 import type { ClientMessage, Command, ServerMessage, TaskStart } from './types.js';
 
@@ -50,7 +50,7 @@ async function connect(startIfMissing: boolean): Promise<net.Socket> {
 
 export async function execute(command: Command, cwd: string, signal?: AbortSignal): Promise<{ exitCode: number | null; output: string }> {
   if (signal?.aborted) return { exitCode: null, output: '' };
-  const env = { ...process.env };
+  const env = shellEnvironment();
   delete env.ASKME_API_KEY;
   env.ASK_AGENT_ACTIVE = '1';
   const shell = commandShell();
