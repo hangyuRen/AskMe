@@ -1,5 +1,5 @@
 {
-  "name": "askme",
+  "name": "@bbzz/askme",
   "version": "0.2.2",
   "description": "AskMe: a shared local AI command planner for your shell",
   "license": "MIT",
